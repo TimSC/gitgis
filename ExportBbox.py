@@ -32,12 +32,19 @@ class ObjIdMapping(object):
 	def __init__(self):
 		self.nextExternalId = {'node': 1, 'way': 1, 'relation': 1}
 		self.mapping = {'node': {}, 'way': {}, 'relation': {}}
+		self.uuids = {}
 
-	def AddId(self, objTy, objInternal, externalId, repoId, tilex, tiley, zoom):
+	def AddId(self, objTy, objInternal, externalId, repoId, tilex, tiley, zoom, uuid):
 		self.mapping[objTy][(tilex, tiley, zoom, objInternal)] = externalId
+		self.uuids[str(uuid)] = externalId
+		if objInternal == 1787634:
+			print 1787634
 
-	def GetId(self, objTy, objInternal, tilex, tiley, zoom):
+	def GetIdByInternalId(self, objTy, objInternal, tilex, tiley, zoom):
 		return self.mapping[objTy][(tilex, tiley, zoom, objInternal)] 
+
+	def GetIdByUuid(self, uuidIn):
+		return self.uuids[str(uuidIn)]
 
 	def GetNewExternalId(self, objType):
 		oid = self.nextExternalId[str(objType)]
@@ -59,13 +66,17 @@ class CollectedData(object):
 			self.data.append(obj)
 			return
 
+		#Find if this object has a uuid
+		objUuid = GetObjUuid(obj)
+
 		#Renumber members of object
 		if obj.tag == "way":
 			for mem in obj:
 				if mem.tag != "nd": continue
 				nid = int(mem.attrib['ref'])
 			
-				externalId = self.objIdMapping.GetId("node", nid, tilex, tiley, zoom)
+				externalId = self.objIdMapping.GetIdByInternalId("node", nid, tilex, tiley, zoom)
+
 				mem.attrib['ref'] = str(externalId)
 
 		if obj.tag == "relation":
@@ -74,18 +85,11 @@ class CollectedData(object):
 				memId = int(mem.attrib['ref'])
 				memTy = str(mem.attrib['type'])
 			
-				try:
-					externalId = self.objIdMapping.GetId(memTy, memId, tilex, tiley, zoom)
-				except KeyError:
-					#Unknown object (probably found as part of an incomplete relation)
-
-					externalId = self.objIdMapping.GetNewExternalId(memTy)
-					self.objIdMapping.AddId(memTy, memId, externalId, repoId, tilex, tiley, zoom)
+				externalId = self.objIdMapping.GetIdByInternalId(memTy, memId, tilex, tiley, zoom)
 
 				mem.attrib['ref'] = str(externalId)
 
 		#Write to output
-		objUuid = GetObjUuid(obj)
 		if objUuid is not None:
 			if objUuid in self.seenUuids:
 				#This object has already been sent to output
@@ -103,14 +107,14 @@ class CollectedData(object):
 				self.seenUuids.add(objUuid)
 
 				#Store mapping
-				self.objIdMapping.AddId(str(obj.tag), internalId, objExternalId, repoId, tilex, tiley, zoom)
+				self.objIdMapping.AddId(str(obj.tag), internalId, objExternalId, repoId, tilex, tiley, zoom, objUuid)
 
 		else:
 			objExternalId = self.objIdMapping.GetNewExternalId(obj.tag)
 			internalId = int(obj.attrib["id"])
 			obj.attrib["id"] = str(objExternalId)
 			self.data.append(obj)
-			self.objIdMapping.AddId(str(obj.tag), internalId, objExternalId, repoId, tilex, tiley, zoom)
+			self.objIdMapping.AddId(str(obj.tag), internalId, objExternalId, repoId, tilex, tiley, zoom, objUuid)
 
 	def Save(self):
 		self.tree.write("out.xml", encoding="UTF-8")

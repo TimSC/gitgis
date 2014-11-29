@@ -35,113 +35,72 @@ def AddUuidsToTile(fina, zoom, tilex, tiley, finaOut):
 	observedNodes = set()
 	totalNodeCount = 0
 
-	#Find nodes outside
-	for obj in root:
-		if obj.tag != "node": continue
-		lat, lon, nid = float(obj.attrib['lat']), float(obj.attrib['lon']), int(obj.attrib['id'])
-		totalNodeCount += 1
-		observedNodes.add(nid)
-		#print lat, lon, nid
-
-		if lat <= latMin or lat >= latMax:
-			nodesOutside.add(nid)
-			continue
-		if lon <= lonMin or lon >= lonMax:
-			nodesOutside.add(nid)
-			continue
-
-	print "Num nodes outside", len(nodesOutside), "of", totalNodeCount, "outside"
-
-	#Find ways outside
-	waysOutside = set()
-	totalWayCount = 0
-	observedWays = set()
-
-	for obj in root:
-		if obj.tag != "way": continue
-		wid = int(obj.attrib["id"])
-		totalWayCount += 1
-		observedWays.add(wid)
-
-		for wayMem in obj:
-			if wayMem.tag != "nd": continue
-			nid = int(wayMem.attrib['ref'])
-			if nid in nodesOutside:
-				waysOutside.add(wid)
-
-	print "Ways", len(waysOutside),"of",totalWayCount, "outside"
-
-	#Check relations that need uuids
-	relationsOutside = set()
-	totalRelationCount=  0
-	for obj in root:
-		if obj.tag != "relation": continue
-		rid = int(obj.attrib["id"])
-		totalRelationCount += 1
-
-		#print obj.attrib
-		outside = False
-		for relMem in obj:
-			if relMem.tag != "member": continue
-			#print relMem.tag, relMem.attrib
-			memTy = relMem.attrib["type"]
-			memRef = int(relMem.attrib["ref"])
-			if memTy == "node" and (memRef in nodesOutside or memRef not in nodesOutside):
-				outside = True
-				break
-			if memTy == "way" and (memRef in waysOutside or memRef not in observedWays):
-				outside = True
-				break
-
-		if outside:
-			relationsOutside.add(rid)
-
-	print "Relations", len(relationsOutside), "of", totalRelationCount, "outside"
-
-	#Find first generation children of outside relations
-	firstGenChildren = {'node': set(), 'way': set(), 'relation': set()}
-
-	for obj in root:
-		if obj.tag != "relation": continue
-		rid = int(obj.attrib["id"])
-		if rid not in relationsOutside: continue
-		for mem in obj:
-			if mem.tag != "member": continue
-			childTy = mem.attrib["type"]
-			childRef = int(mem.attrib["ref"])
-			firstGenChildren[childTy].add(childRef)
-
-	for obj in root:
-		if obj.tag != "way": continue
-		rid = int(obj.attrib["id"])
-		if rid not in waysOutside: continue
-		for mem in obj:
-			if mem.tag != "nd": continue
-			childRef = int(mem.attrib["ref"])
-			firstGenChildren["node"].add(childRef)
-
-	print "First gen child nodes", len(firstGenChildren["node"])
-	print "First gen child ways", len(firstGenChildren["way"])
-	print "First gen child relations", len(firstGenChildren["relation"])
-
-	#Add uuid to objects
+	#Add uuid to all objects
 	for obj in root:
 		if obj.tag != "node": continue
 		oid = int(obj.attrib["id"])
-		if oid in firstGenChildren["node"]:
-			AddUuidTagToObj(obj, str(uuid.uuid5(namespaceUuid, "node"+str(oid))))
+		#AddUuidTagToObj(obj, str(uuid.uuid5(namespaceUuid, "node"+str(oid))))
+		obj.attrib["uuid"] = str(uuid.uuid5(namespaceUuid, "node"+str(oid)))
+		del obj.attrib["id"]
+		del obj.attrib["changeset"]
+		del obj.attrib["timestamp"]
+		del obj.attrib["uid"]
+		if "user" in obj.attrib: del obj.attrib["user"]
+		del obj.attrib["visible"]
+		obj.attrib["lat"] = str(round(float(obj.attrib["lat"]), 8))
+		obj.attrib["lon"] = str(round(float(obj.attrib["lon"]), 8))
 
 	for obj in root:
 		if obj.tag != "way": continue
 		wid = int(obj.attrib["id"])
-		if wid in waysOutside or wid in firstGenChildren["way"]:
-			AddUuidTagToObj(obj, str(uuid.uuid5(namespaceUuid, "way"+str(wid))))
+		#AddUuidTagToObj(obj, str(uuid.uuid5(namespaceUuid, "way"+str(wid))))
+		obj.attrib["uuid"] = str(uuid.uuid5(namespaceUuid, "way"+str(wid)))
+		del obj.attrib["id"]
+		del obj.attrib["changeset"]
+		del obj.attrib["timestamp"]
+		del obj.attrib["uid"]
+		if "user" in obj.attrib: del obj.attrib["user"]
+		del obj.attrib["visible"]
+
+		#Convert member nodes
+		for mem in obj:
+			if mem.tag != "nd": continue
+			nid = int(mem.attrib['ref'])
+			del mem.attrib['ref']
+			mem.attrib['uuid'] = str(uuid.uuid5(namespaceUuid, "node"+str(nid)))
+
+		#Remove unnecessary tags
+		toRemove = []
+		for mem in obj:
+			if mem.tag != "tag": continue
+			if mem.attrib["k"] in ["meta:id", "meta:lastEdit"]:
+				toRemove.append(mem)
+				continue
+			
+
+		for tag in toRemove:
+			obj.remove(tag)
 
 	for obj in root:
 		if obj.tag != "relation": continue
 		rid = int(obj.attrib["id"])
-		if rid in relationsOutside or rid in firstGenChildren["relation"]:
-			AddUuidTagToObj(obj, str(uuid.uuid5(namespaceUuid, "relation"+str(rid))))
+		#AddUuidTagToObj(obj, str(uuid.uuid5(namespaceUuid, "relation"+str(rid))))
+		obj.attrib["uuid"] = str(uuid.uuid5(namespaceUuid, "relation"+str(rid)))
+		del obj.attrib["id"]
+		del obj.attrib["changeset"]
+		del obj.attrib["timestamp"]
+		del obj.attrib["uid"]
+		if "user" in obj.attrib: del obj.attrib["user"]
+		del obj.attrib["visible"]
+
+		#Convert member objects
+		for mem in obj:
+			if mem.tag != "member": continue
+			memId = int(mem.attrib['ref'])
+			memTy = str(mem.attrib['type'])
+
+			del mem.attrib['ref']
+			mem.attrib['uuid'] = str(uuid.uuid5(namespaceUuid, memTy+str(memId)))
 
 	tree.write(finaOut)
 
