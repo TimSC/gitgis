@@ -11,36 +11,131 @@ def GetObjUuid(obj):
 
 	return None
 
+def UpdateTagInObj(obj, tag, val):
+	#Check if already tagged
+	done = False
+	for mem in obj:
+		if mem.tag != "tag": continue
+		if mem.attrib["k"] != tag: continue
+
+		#Update existing tag
+		mem.attrib["v"] = str(val)
+		return
+
+	#Create new tag to contain value
+	uuidTag = ET.Element("tag")
+	uuidTag.attrib["k"] = tag
+	uuidTag.attrib["v"] = str(val)
+	obj.append(uuidTag)
+
+class ObjIdMapping(object):
+	def __init__(self):
+		self.nextExternalId = {'node': 1, 'way': 1, 'relation': 1}
+		self.mapping = {'node': {}, 'way': {}, 'relation': {}}
+
+	def AddId(self, objTy, objInternal, externalId, repoId, tilex, tiley, zoom):
+		self.mapping[objTy][(tilex, tiley, zoom, objInternal)] = externalId
+
+	def GetId(self, objTy, objInternal, tilex, tiley, zoom):
+		return self.mapping[objTy][(tilex, tiley, zoom, objInternal)] 
+
+	def GetNewExternalId(self, objType):
+		oid = self.nextExternalId[str(objType)]
+		self.nextExternalId[str(objType)] += 1
+		return oid
+
 class CollectedData(object):
 	def __init__(self):
 		self.data = ET.Element("osm")
 		self.data.attrib["version"] = str(0.6)
 		self.tree = ET.ElementTree(self.data)
 		self.seenUuids = set()
+
+		self.objIdMapping = ObjIdMapping()
 	
-	def Add(self, obj):
+	def Add(self, obj, repoId, tilex, tiley, zoom):
+
+		if obj.tag == "bounds":
+			self.data.append(obj)
+			return
+
+		#Renumber members of object
+		if obj.tag == "way":
+			for mem in obj:
+				if mem.tag != "nd": continue
+				nid = int(mem.attrib['ref'])
+			
+				externalId = self.objIdMapping.GetId("node", nid, tilex, tiley, zoom)
+				mem.attrib['ref'] = str(externalId)
+
+		if obj.tag == "relation":
+			for mem in obj:
+				if mem.tag != "member": continue
+				memId = int(mem.attrib['ref'])
+				memTy = str(mem.attrib['type'])
+			
+				try:
+					externalId = self.objIdMapping.GetId(memTy, memId, tilex, tiley, zoom)
+				except KeyError:
+					#Unknown object (probably found as part of an incomplete relation)
+
+					externalId = self.objIdMapping.GetNewExternalId(memTy)
+					self.objIdMapping.AddId(memTy, memId, externalId, repoId, tilex, tiley, zoom)
+
+				mem.attrib['ref'] = str(externalId)
+
+		#Write to output
 		objUuid = GetObjUuid(obj)
 		if objUuid is not None:
 			if objUuid in self.seenUuids:
-				print "already seen:", objUuid
+				#This object has already been sent to output
+				pass
+				#print "already seen:", objUuid
 			else:
+				#Rewrite object id with new external reference
+				objExternalId = self.objIdMapping.GetNewExternalId(obj.tag)
+				internalId = int(obj.attrib["id"])
+				obj.attrib["id"] = str(objExternalId)
+
+				self.data.append(obj)	
+
+				#Remember this has already been added
 				self.seenUuids.add(objUuid)
 
-		self.data.append(obj)
+				#Store mapping
+				self.objIdMapping.AddId(str(obj.tag), internalId, objExternalId, repoId, tilex, tiley, zoom)
+
+		else:
+			objExternalId = self.objIdMapping.GetNewExternalId(obj.tag)
+			internalId = int(obj.attrib["id"])
+			obj.attrib["id"] = str(objExternalId)
+			self.data.append(obj)
+			self.objIdMapping.AddId(str(obj.tag), internalId, objExternalId, repoId, tilex, tiley, zoom)
 
 	def Save(self):
-		self.tree.write("out.xml")
+		self.tree.write("out.xml", encoding="UTF-8")
 
-def ExportFromTile(tilex, tiley, zoom, pth, out):
+def ExportFromTile(repoId, tilex, tiley, zoom, pth, out):
 	print tilex, tiley, zoom
 	fina = os.path.join(pth, str(zoom), str(tilex), str(tiley)+".osm")
 	xml = ET.parse(fina)
 	xmlRoot = xml.getroot()
 
 	for obj in xmlRoot:
-		#Is object a shared obj?
-		#objUuid = GetObjUuid(obj)
-		out.Add(obj)
+		if obj.tag != "bounds": continue
+		out.Add(obj, repoId, tilex, tiley, zoom)
+
+	for obj in xmlRoot:
+		if obj.tag != "node": continue
+		out.Add(obj, repoId, tilex, tiley, zoom)
+
+	for obj in xmlRoot:
+		if obj.tag != "way": continue
+		out.Add(obj, repoId, tilex, tiley, zoom)
+
+	for obj in xmlRoot:
+		if obj.tag != "relation": continue
+		out.Add(obj, repoId, tilex, tiley, zoom)
 
 def ExportBbox(lats, lons, zoom):
 
@@ -55,12 +150,14 @@ def ExportBbox(lats, lons, zoom):
 	print boundsBR
 
 	out = CollectedData()
+	repoId = 1
 
 	pth = "/home/tim/Desktop/surrey"
 	for tilex in range(boundsTL[0], boundsBR[0]+1):
 		for tiley in range(boundsTL[1], boundsBR[1]+1):
-			ExportFromTile(tilex, tiley, zoom, pth, out)
+			ExportFromTile(repoId, tilex, tiley, zoom, pth, out)
 
+	print "Write output"
 	out.Save()
 
 if __name__ == "__main__":
