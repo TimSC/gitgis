@@ -44,7 +44,7 @@ def AddUuidsToTile(fina, zoom, tilex, tiley, finaOut):
 		del obj.attrib["id"]
 		del obj.attrib["changeset"]
 		del obj.attrib["timestamp"]
-		del obj.attrib["uid"]
+		if "uid" in obj.attrib: del obj.attrib["uid"]
 		if "user" in obj.attrib: del obj.attrib["user"]
 		del obj.attrib["visible"]
 		obj.attrib["lat"] = str(round(float(obj.attrib["lat"]), 8))
@@ -58,7 +58,7 @@ def AddUuidsToTile(fina, zoom, tilex, tiley, finaOut):
 		del obj.attrib["id"]
 		del obj.attrib["changeset"]
 		del obj.attrib["timestamp"]
-		del obj.attrib["uid"]
+		if "uid" in obj.attrib: del obj.attrib["uid"]
 		if "user" in obj.attrib: del obj.attrib["user"]
 		del obj.attrib["visible"]
 
@@ -89,7 +89,7 @@ def AddUuidsToTile(fina, zoom, tilex, tiley, finaOut):
 		del obj.attrib["id"]
 		del obj.attrib["changeset"]
 		del obj.attrib["timestamp"]
-		del obj.attrib["uid"]
+		if "uid" in obj.attrib: del obj.attrib["uid"]
 		if "user" in obj.attrib: del obj.attrib["user"]
 		del obj.attrib["visible"]
 
