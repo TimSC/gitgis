@@ -1,14 +1,31 @@
 import slippytiles
 import xml.etree.cElementTree as ET
-import os
+import os, uuid
+
+def GetObjUuid(obj):
+
+	for mem in obj:
+		if mem.tag != "tag": continue
+		if mem.attrib["k"] != "meta:uuid": continue	
+		return uuid.UUID(mem.attrib["v"])
+
+	return None
 
 class CollectedData(object):
 	def __init__(self):
 		self.data = ET.Element("osm")
 		self.data.attrib["version"] = str(0.6)
 		self.tree = ET.ElementTree(self.data)
+		self.seenUuids = set()
 	
 	def Add(self, obj):
+		objUuid = GetObjUuid(obj)
+		if objUuid is not None:
+			if objUuid in self.seenUuids:
+				print "already seen:", objUuid
+			else:
+				self.seenUuids.add(objUuid)
+
 		self.data.append(obj)
 
 	def Save(self):
@@ -19,8 +36,10 @@ def ExportFromTile(tilex, tiley, zoom, pth, out):
 	fina = os.path.join(pth, str(zoom), str(tilex), str(tiley)+".osm")
 	xml = ET.parse(fina)
 	xmlRoot = xml.getroot()
-	
+
 	for obj in xmlRoot:
+		#Is object a shared obj?
+		#objUuid = GetObjUuid(obj)
 		out.Add(obj)
 
 def ExportBbox(lats, lons, zoom):
