@@ -1,7 +1,22 @@
 import os, string, slippytiles, uuid
 import xml.etree.ElementTree as ET
 
+def AddUuidTagToObj(obj, objUuid):
+	#Check if already tagged
+	done = False
+	for mem in obj:
+		if mem.tag != "tag": continue
+		if mem.attrib["k"] != "meta:uuid": continue
 
+		#Update existing tag
+		mem.attrib["v"] = str(objUuid)
+		return
+
+	#Create new tag to contain value
+	uuidTag = ET.Element("tag")
+	uuidTag.attrib["k"] = "meta:uuid"
+	uuidTag.attrib["v"] = str(objUuid)
+	obj.append(uuidTag)
 
 def AddUuidsToTile(fina, zoom, tilex, tiley, finaOut):
 	tree = ET.parse(fina)
@@ -54,13 +69,13 @@ def AddUuidsToTile(fina, zoom, tilex, tiley, finaOut):
 			if nid in nodesOutside:
 				waysOutside.add(wid)
 
-	print len(waysOutside),"of",totalWayCount
+	print "Ways", len(waysOutside),"of",totalWayCount
 
 	#Add uuid to ways
 	for obj in root:
 		if obj.tag != "way": continue
 		wid = int(obj.attrib["id"])
-		obj.attrib["uuid"] = str(uuid.uuid5(namespaceUuid, "way"+str(wid)))
+		AddUuidTagToObj(obj, str(uuid.uuid5(namespaceUuid, "way"+str(wid))))
 
 	#Check relations that need uuids
 	relationsOutside = set()
@@ -93,7 +108,7 @@ def AddUuidsToTile(fina, zoom, tilex, tiley, finaOut):
 		if obj.tag != "relation": continue
 		rid = int(obj.attrib["id"])
 		if rid in relationsOutside:
-			obj.attrib["uuid"] = str(uuid.uuid5(namespaceUuid, "relation"+str(rid)))
+			AddUuidTagToObj(obj, str(uuid.uuid5(namespaceUuid, "relation"+str(rid))))
 
 	tree.write(finaOut)
 
