@@ -1,6 +1,6 @@
 import slippytiles
 import xml.etree.cElementTree as ET
-import os, uuid
+import os, uuid, json
 
 def GetObjUuid(obj):
 	return uuid.UUID(obj.attrib["uuid"])
@@ -25,30 +25,32 @@ def UpdateTagInObj(obj, tag, val):
 class ObjIdMapping(object):
 	def __init__(self):
 		self.nextExternalId = {'node': 1, 'way': 1, 'relation': 1}
-		self.uuids = {}
+		self.uuidsToExternalId = {}
+		self.uuidToTileAddr = {}
+		self.uuidToType = {}
 
-	def AssignExternalId(self, objTy, objUuid):
+	def AssignExternalId(self, objTy, objUuid, tileAddr):
 		#Check if the uuid already has an external ID
-		if str(objUuid) in self.uuids:
-			return self.uuids[str(objUuid)]
+		if str(objUuid) in self.uuidsToExternalId:
+			return self.uuidsToExternalId[str(objUuid)]
 
 		#Assign new external id
 		externalId = self.nextExternalId[objTy]
 		self.nextExternalId[objTy] += 1
-		self.uuids[str(objUuid)] = externalId
+		self.uuidsToExternalId[str(objUuid)] = externalId
+		if str(objUuid) in self.uuidToTileAddr:
+			if tileAddr is not None:
+				self.uuidToTileAddr[str(objUuid)] = tileAddr
+		else:
+			self.uuidToTileAddr[str(objUuid)] = tileAddr
+		self.uuidToType[str(objUuid)] = objTy
 		return externalId
 
-	def AssignExternalIdToObj(self, obj):
-		#Check if the uuid already has an external ID
-		objUuid = GetObjUuid(obj)
-		if str(objUuid) in self.uuids:
-			return self.uuids[str(objUuid)]
-
-		#Assign new external id
-		externalId = self.nextExternalId[str(obj.tag)]
-		self.nextExternalId[str(obj.tag)] += 1
-		self.uuids[str(objUuid)] = externalId
-		return externalId
+	def Save(self):
+		fi = open("mapping.dat", "wt")
+		for objUuid in self.uuidsToExternalId:
+			fi.write(json.dumps((objUuid,self.uuidToType[objUuid],self.uuidsToExternalId[objUuid],self.uuidToTileAddr[objUuid]))+"\n")
+		fi.close()
 
 class CollectedData(object):
 	def __init__(self):
@@ -76,7 +78,7 @@ class CollectedData(object):
 				if mem.tag != "nd": continue
 				nuuid = uuid.UUID(mem.attrib['uuid'])
 
-				externalId = self.objIdMapping.AssignExternalId("node", nuuid)
+				externalId = self.objIdMapping.AssignExternalId("node", nuuid, None)
 
 				mem.attrib['ref'] = str(externalId)
 				del mem.attrib['uuid']
@@ -89,37 +91,26 @@ class CollectedData(object):
 				memTy = str(mem.attrib['type'])
 			
 				#This function must handle incomplete relations that have not yet had uuids assigned
-				externalId = self.objIdMapping.AssignExternalId(memTy, memUuid)
+				externalId = self.objIdMapping.AssignExternalId(memTy, memUuid, None)
 
 				mem.attrib['ref'] = str(externalId)
 				del mem.attrib['uuid']
 
-		#Write to output
-		if objUuid is not None:
-			if objUuid in self.seenUuids:
-				#This object has already been sent to output
-				pass
-				#print "already seen:", objUuid
-			else:
-				#Rewrite object id with new external reference
-				objExternalId = self.objIdMapping.AssignExternalIdToObj(obj)
-				obj.attrib["id"] = str(objExternalId)
-				del obj.attrib['uuid']
-
-				self.data.append(obj)	
-
-				#Remember this has already been added
-				self.seenUuids.add(objUuid)
-
-		else:
-			objExternalId = self.objIdMapping.AssignExternalIdToObj(obj)
-			internalId = int(obj.attrib["id"])
+		#Write to output, but skip objects already written
+		if objUuid not in self.seenUuids:
+			#Rewrite object id with new external reference
+			objExternalId = self.objIdMapping.AssignExternalId(str(obj.tag), str(objUuid), (tilex, tiley, zoom))
 			obj.attrib["id"] = str(objExternalId)
 			del obj.attrib['uuid']
-			self.data.append(obj)
 
-	def Save(self):
-		self.tree.write("out.xml", encoding="UTF-8")
+			self.data.append(obj)	
+
+			#Remember this has already been added
+			self.seenUuids.add(objUuid)
+
+	def Save(self, fina):
+		self.tree.write(fina, encoding="UTF-8")
+		self.objIdMapping.Save()
 
 def ExportFromTile(repoId, tilex, tiley, zoom, pth, out):
 	print tilex, tiley, zoom
@@ -164,7 +155,7 @@ def ExportBbox(lats, lons, zoom):
 			ExportFromTile(repoId, tilex, tiley, zoom, pth, out)
 
 	print "Write output"
-	out.Save()
+	out.Save("out.xml")
 
 if __name__ == "__main__":
 
