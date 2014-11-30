@@ -54,6 +54,8 @@ class CollectedData(object):
 	def __init__(self):
 		self.data = ET.Element("osm")
 		self.data.attrib["version"] = str(0.6)
+		self.data.attrib["upload"] = "true"
+		self.data.attrib["generator"] = "py"
 		self.tree = ET.ElementTree(self.data)
 		self.seenUuids = set()
 
@@ -116,14 +118,6 @@ class CollectedData(object):
 			del obj.attrib['uuid']
 			self.data.append(obj)
 
-	def AddCompatibilityData(self):
-		for obj in self.data:
-			obj.attrib["changeset"] = str(1)
-			obj.attrib["timestamp"] = "2007-09-16T19:52:49Z"
-			obj.attrib["uid"] = str(1)
-			obj.attrib["user"] = "foobar"
-			obj.attrib["visible"] = "true"
-
 	def Save(self):
 		self.tree.write("out.xml", encoding="UTF-8")
 
@@ -168,8 +162,6 @@ def ExportBbox(lats, lons, zoom):
 	for tilex in range(boundsTL[0], boundsBR[0]+1):
 		for tiley in range(boundsTL[1], boundsBR[1]+1):
 			ExportFromTile(repoId, tilex, tiley, zoom, pth, out)
-
-	out.AddCompatibilityData()
 
 	print "Write output"
 	out.Save()
