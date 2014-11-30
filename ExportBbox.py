@@ -77,6 +77,7 @@ class CollectedData(object):
 				externalId = self.objIdMapping.AssignExternalId("node", nuuid)
 
 				mem.attrib['ref'] = str(externalId)
+				del mem.attrib['uuid']
 
 		if obj.tag == "relation":
 			#Renumber members of relation
@@ -89,6 +90,7 @@ class CollectedData(object):
 				externalId = self.objIdMapping.AssignExternalId(memTy, memUuid)
 
 				mem.attrib['ref'] = str(externalId)
+				del mem.attrib['uuid']
 
 		#Write to output
 		if objUuid is not None:
@@ -100,6 +102,7 @@ class CollectedData(object):
 				#Rewrite object id with new external reference
 				objExternalId = self.objIdMapping.AssignExternalIdToObj(obj)
 				obj.attrib["id"] = str(objExternalId)
+				del obj.attrib['uuid']
 
 				self.data.append(obj)	
 
@@ -110,7 +113,16 @@ class CollectedData(object):
 			objExternalId = self.objIdMapping.AssignExternalIdToObj(obj)
 			internalId = int(obj.attrib["id"])
 			obj.attrib["id"] = str(objExternalId)
+			del obj.attrib['uuid']
 			self.data.append(obj)
+
+	def AddCompatibilityData(self):
+		for obj in self.data:
+			obj.attrib["changeset"] = str(1)
+			obj.attrib["timestamp"] = "2007-09-16T19:52:49Z"
+			obj.attrib["uid"] = str(1)
+			obj.attrib["user"] = "foobar"
+			obj.attrib["visible"] = "true"
 
 	def Save(self):
 		self.tree.write("out.xml", encoding="UTF-8")
@@ -156,6 +168,8 @@ def ExportBbox(lats, lons, zoom):
 	for tilex in range(boundsTL[0], boundsBR[0]+1):
 		for tiley in range(boundsTL[1], boundsBR[1]+1):
 			ExportFromTile(repoId, tilex, tiley, zoom, pth, out)
+
+	out.AddCompatibilityData()
 
 	print "Write output"
 	out.Save()
