@@ -3,13 +3,7 @@ import xml.etree.cElementTree as ET
 import os, uuid
 
 def GetObjUuid(obj):
-
-	for mem in obj:
-		if mem.tag != "tag": continue
-		if mem.attrib["k"] != "meta:uuid": continue	
-		return uuid.UUID(mem.attrib["v"])
-
-	return None
+	return uuid.UUID(obj.attrib["uuid"])
 
 def UpdateTagInObj(obj, tag, val):
 	#Check if already tagged
@@ -31,25 +25,30 @@ def UpdateTagInObj(obj, tag, val):
 class ObjIdMapping(object):
 	def __init__(self):
 		self.nextExternalId = {'node': 1, 'way': 1, 'relation': 1}
-		self.mapping = {'node': {}, 'way': {}, 'relation': {}}
 		self.uuids = {}
 
-	def AddId(self, objTy, objInternal, externalId, repoId, tilex, tiley, zoom, uuid):
-		self.mapping[objTy][(tilex, tiley, zoom, objInternal)] = externalId
-		self.uuids[str(uuid)] = externalId
-		if objInternal == 1787634:
-			print 1787634
+	def AssignExternalId(self, objTy, objUuid):
+		#Check if the uuid already has an external ID
+		if str(objUuid) in self.uuids:
+			return self.uuids[str(objUuid)]
 
-	def GetIdByInternalId(self, objTy, objInternal, tilex, tiley, zoom):
-		return self.mapping[objTy][(tilex, tiley, zoom, objInternal)] 
+		#Assign new external id
+		externalId = self.nextExternalId[objTy]
+		self.nextExternalId[objTy] += 1
+		self.uuids[str(objUuid)] = externalId
+		return externalId
 
-	def GetIdByUuid(self, uuidIn):
-		return self.uuids[str(uuidIn)]
+	def AssignExternalIdToObj(self, obj):
+		#Check if the uuid already has an external ID
+		objUuid = GetObjUuid(obj)
+		if str(objUuid) in self.uuids:
+			return self.uuids[str(objUuid)]
 
-	def GetNewExternalId(self, objType):
-		oid = self.nextExternalId[str(objType)]
-		self.nextExternalId[str(objType)] += 1
-		return oid
+		#Assign new external id
+		externalId = self.nextExternalId[str(obj.tag)]
+		self.nextExternalId[str(obj.tag)] += 1
+		self.uuids[str(objUuid)] = externalId
+		return externalId
 
 class CollectedData(object):
 	def __init__(self):
@@ -69,23 +68,25 @@ class CollectedData(object):
 		#Find if this object has a uuid
 		objUuid = GetObjUuid(obj)
 
-		#Renumber members of object
 		if obj.tag == "way":
+			#Renumber members of way
 			for mem in obj:
 				if mem.tag != "nd": continue
-				nid = int(mem.attrib['ref'])
-			
-				externalId = self.objIdMapping.GetIdByInternalId("node", nid, tilex, tiley, zoom)
+				nuuid = uuid.UUID(mem.attrib['uuid'])
+
+				externalId = self.objIdMapping.AssignExternalId("node", nuuid)
 
 				mem.attrib['ref'] = str(externalId)
 
 		if obj.tag == "relation":
+			#Renumber members of relation
 			for mem in obj:
 				if mem.tag != "member": continue
-				memId = int(mem.attrib['ref'])
+				memUuid = uuid.UUID(mem.attrib['uuid'])
 				memTy = str(mem.attrib['type'])
 			
-				externalId = self.objIdMapping.GetIdByInternalId(memTy, memId, tilex, tiley, zoom)
+				#This function must handle incomplete relations that have not yet had uuids assigned
+				externalId = self.objIdMapping.AssignExternalId(memTy, memUuid)
 
 				mem.attrib['ref'] = str(externalId)
 
@@ -97,8 +98,7 @@ class CollectedData(object):
 				#print "already seen:", objUuid
 			else:
 				#Rewrite object id with new external reference
-				objExternalId = self.objIdMapping.GetNewExternalId(obj.tag)
-				internalId = int(obj.attrib["id"])
+				objExternalId = self.objIdMapping.AssignExternalIdToObj(obj)
 				obj.attrib["id"] = str(objExternalId)
 
 				self.data.append(obj)	
@@ -106,15 +106,11 @@ class CollectedData(object):
 				#Remember this has already been added
 				self.seenUuids.add(objUuid)
 
-				#Store mapping
-				self.objIdMapping.AddId(str(obj.tag), internalId, objExternalId, repoId, tilex, tiley, zoom, objUuid)
-
 		else:
-			objExternalId = self.objIdMapping.GetNewExternalId(obj.tag)
+			objExternalId = self.objIdMapping.AssignExternalIdToObj(obj)
 			internalId = int(obj.attrib["id"])
 			obj.attrib["id"] = str(objExternalId)
 			self.data.append(obj)
-			self.objIdMapping.AddId(str(obj.tag), internalId, objExternalId, repoId, tilex, tiley, zoom, objUuid)
 
 	def Save(self):
 		self.tree.write("out.xml", encoding="UTF-8")
